@@ -17,12 +17,16 @@ var grupoBroadcast = function (participantes, mensagem, origem) {
   });
 }
 
-var enviaMensagemGrupo = function (grupo, mensagem, origem) {
-  grupos.forEach(function (grupo) {
-    if (grupo.nome === grupo) {
-      grupoBroadcast(grupo.participantes, mensagem, origem)
-    }
-  });
+var criandoGrupo = function (nomeDoGrupo, connection) {
+  if (nomeDoGrupo === '' || nomeDoGrupo === undefined) {
+    connection.write('Nome do grupo não foi informado');
+  } else {
+    var grupo = { 'nome': nomeDoGrupo, 'administador': connection.nickname, 'participantes': [connection] };
+    grupos.push(grupo);
+    if (connection.grupos == undefined) connection.grupos = [];    
+    connection.grupos.push(grupo);
+    connection.write('Grupo criado com sucesso!');
+  }
 }
 
 var addParticipanteEmGrupo = function (grupoNome, nicknameParticipante) {
@@ -33,12 +37,26 @@ var addParticipanteEmGrupo = function (grupoNome, nicknameParticipante) {
     }
   });
 
+  if (connectionFound == null) {
+    connectionFound.write('Nome do participante não econtrado!' + nicknameParticipante);
+  }
+
   grupos.forEach(function (itemGrupo) {
     if (itemGrupo.nome === grupoNome) {
       itemGrupo.participantes.push(connectionFound);
+      if (connectionFound.grupos == undefined) connectionFound.grupos = [];
+      connectionFound.push(itemGrupo);
     }
   });
 };
+
+var enviaMensagemGrupo = function (grupo, mensagem, origem) {
+  grupos.forEach(function (itemGrupo) {
+    if (itemGrupo.nome === grupo) {
+      grupoBroadcast(itemGrupo.participantes, mensagem, origem)
+    }
+  });
+}
 
 var enviaMensagemParaContato = function (contato, mensagem) {
   var connectionFound = null;
@@ -61,28 +79,53 @@ var adicionarContatoNaLista = function (connection, contato) {
     }
   });
   if (contatoEncontrado == null) {
-    connection.write('Nenhum contato encontrado!');
+    connection.write('Nenhum contato encontrado!\n');
   } else {
     connection.listaDeContatos.push(contatoEncontrado);
   }  
   return;
 }
 
-var exibeDetalhes = function (connection) {  
-  var strContatos = '';
-  if (connection.listaDeContatos == undefined) {
-    connection.write('Nenhum contato localizado!\n');
+var addNickname = function (connection, nickname) {
+  if (nickname === '') {
+    connection.write('Nenhum nickname informado\n');
     return;
   }
-  for (var i = 0; i < connection.listaDeContatos.length; i++) {
-    strContatos = strContatos + connection.listaDeContatos[i].nickname + "\n";
-  } 
-  connection.write('lista de contatos:' + strContatos);
+  if (connection.nickname == undefined) {
+    connection.write('Nickname criado\n');
+  } else {    
+    broadcast(connection.nickname + ' agora é ' + nickname);
+  }
+  connection.nickname = nickname;
+}
+
+var exibeDetalhes = function (connection) {    
+  var strContatos = '';
+  if (connection.listaDeContatos == undefined) {
+    connection.write('Nenhum contato localizado!\n');    
+  } else {
+    for (var i = 0; i < connection.listaDeContatos.length; i++) {
+      strContatos = strContatos + connection.listaDeContatos[i].nickname + ', ';
+    } 
+    connection.write('lista de contatos:' + strContatos + '\n');    
+  }    
+
+  var strGrupos = '';
+  if (connection.grupos == undefined) {
+    connection.write('Nenhum grupo pertencente!\n');    
+  } else {
+    for (var i = 0; i < connection.grupos.length; i++) {
+      strGrupos = strGrupos + connection.grupos[i].nome + ', ';
+    }
+    connection.write('lista de grupos:' + strGrupos + '\n');
+  }
 }
 
 var exibeComandos = function (connection) {
-  connection.write('\nComandos:\n'
-    + '1 - criar nickname (exemplo: 1 fulano) \n'
+  connection.write(
+    connection.nickname + ' está conectado(a)!!!\n'
+    + '\nComandos:\n' 
+    + '1 - criar nickname (exemplo: 1 fulano) \n' 
     + '2 - adicionar contato (exemplo: 2 fulano) \n'
     + '3 - enviar mensagem a contato (exemplo: 3 contato => mensagem ) \n'
     + '4 - criar grupo (exemplo: 4 nome do grupo ) \n'
@@ -94,7 +137,7 @@ var exibeComandos = function (connection) {
 
 net.createServer(function (connection) {
   connections.push(connection);
-  connection.write('Você está conectado ao servidor\n');
+  connection.write('Você está conectado ao servidor\n');  
   exibeComandos(connection);
 
   connection.on('data', function (message) {
@@ -102,16 +145,7 @@ net.createServer(function (connection) {
 
     if (command.indexOf('1 -') === 0) {
       var nickname = command.replace('1 -', '').trim();
-      if (nickname === '') {
-        connection.write('Nenhum nickname informado');
-        return;
-      }
-      if (connection.nickname == undefined) {
-        broadcast(' Nickname criado');
-      } else {
-        broadcast(connection.nickname + ' agora é ' + nickname);
-      }
-      connection.nickname = nickname;
+      addNickname(connection, nickname);      
       exibeComandos(connection);
       return;
     }
@@ -132,13 +166,7 @@ net.createServer(function (connection) {
 
     if (command.indexOf('4 -') === 0) {
       var nomeDoGrupo = command.replace('4 -', '').trim();
-      if (nomeDoGrupo === '' || nomeDoGrupo === undefined) {
-        connection.write('Nome do grupo não foi informado');
-      } else {
-        var grupo = { 'nome': nomeDoGrupo, 'administador': connection.nickname, 'participantes': [] };
-        grupos.push(grupo);
-        connection.write('Grupo criado com sucesso!');
-      }
+      criandoGrupo(nomeDoGrupo, connection);
       exibeComandos(connection);
       return;
     }
@@ -146,9 +174,9 @@ net.createServer(function (connection) {
     if (command.indexOf('5 -') === 0) {
       var grupoParticipante = command.replace('5 -', '').trim();
       var grupo = grupoParticipante.substring(0, grupoParticipante.indexOf("=>")).trim();
-      var nicknameParticipante = grupoParticipante.split("=>").pop();
+      var nicknameParticipante = grupoParticipante.split("=>").pop().trim();
       addParticipanteEmGrupo(grupo, nicknameParticipante);
-      connection.write('Participante Adicionado!');
+      connection.write('Participante Adicionado!\n');
       exibeComandos(connection);
       return;
     }
@@ -157,7 +185,7 @@ net.createServer(function (connection) {
       var grupoMensagem = command.replace('6 -', '').trim();
       var grupo = grupoMensagem.substring(0, grupoMensagem.indexOf("=>")).trim();
       var mensagem = grupoMensagem.split("=>").pop();
-      enviaMensagemGrupo(grupo, mensagem);      
+      enviaMensagemGrupo(grupo, connection.nickname + ' > ' + mensagem);      
       return;
     }
 
