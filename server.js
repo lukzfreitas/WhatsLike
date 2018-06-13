@@ -14,6 +14,7 @@ var grupoBroadcast = function (participantes, mensagem, origem) {
   participantes.forEach(function (connection) {
     if (connection === origem) return;
     connection.write(mensagem);
+    connection.mensagensGrupo.push(mensagem);
   });
 }
 
@@ -23,31 +24,29 @@ var criandoGrupo = function (nomeDoGrupo, connection) {
   } else {
     var grupo = { 'nome': nomeDoGrupo, 'administador': connection.nickname, 'participantes': [connection] };
     grupos.push(grupo);
-    if (connection.grupos == undefined) connection.grupos = [];    
     connection.grupos.push(grupo);
     connection.write('Grupo criado com sucesso!');
   }
 }
 
-var addParticipanteEmGrupo = function (grupoNome, nicknameParticipante) {
-  var connectionFound = null;
-  connections.forEach(function (connection) {
-    if (connection.nickname == nicknameParticipante) {
-      connectionFound = connection;
-    }
-  });
+var addParticipanteEmGrupo = function (connection, grupoNome, nicknameParticipante) {
 
-  if (connectionFound == null) {
-    connectionFound.write('Nome do participante não econtrado!' + nicknameParticipante);
+  connectionFound = connection.listaDeContatos.find(function (contato) {
+    return contato.nickname === nicknameParticipante
+  });
+  if (connectionFound === undefined) {
+    connection.write('Participante não encontrado na lista de contatos');
+    return;
   }
 
   grupos.forEach(function (itemGrupo) {
     if (itemGrupo.nome === grupoNome) {
       itemGrupo.participantes.push(connectionFound);
-      if (connectionFound.grupos == undefined) connectionFound.grupos = [];
+      if (connectionFound.grupos === undefined) connectionFound.grupos = [];
       connectionFound.push(itemGrupo);
     }
   });
+  connection.write('Participante Adicionado!\n');
 };
 
 var enviaMensagemGrupo = function (grupo, mensagem, origem) {
@@ -58,32 +57,28 @@ var enviaMensagemGrupo = function (grupo, mensagem, origem) {
   });
 }
 
-var enviaMensagemParaContato = function (contato, mensagem) {
-  var connectionFound = null;
-  connections.forEach(function (connection) {
-    if (connection.nickname == contato) {
-      connectionFound = connection;
-    }
+var enviaMensagemParaContato = function (connection, contato, mensagem) {
+  var connectionFound = connections.find(function (connectionItem) {
+    return connectionItem.nickname === contato;
   });
+  if (connectionFound === undefined) {
+    connection.write('Contato não encontrado na lista de contatos');
+    return;
+  }
   connectionFound.write(mensagem);
+  connectionFound.mensagens.push(mensagem);
 }
 
 var adicionarContatoNaLista = function (connection, contato) {
-  if (connection.listaDeContatos == undefined) {
-    connection.listaDeContatos = [];
-  }
-  var contatoEncontrado = null;
-  connections.forEach(function (contatoConnection) {
-    if (contatoConnection.nickname === contato) {
-      contatoEncontrado = contatoConnection;      
-    }
+  var contatoEncontrado = connections.find(function (connectionItem) {
+    return connectionItem.nickname === contato;
   });
-  if (contatoEncontrado == null) {
+  if (contatoEncontrado === undefined) {
     connection.write('Nenhum contato encontrado!\n');
-  } else {
-    connection.listaDeContatos.push(contatoEncontrado);
-  }  
-  return;
+    return;
+  }
+  connection.listaDeContatos.push(contatoEncontrado);
+  connection.write('Contato adicionado!\n');
 }
 
 var addNickname = function (connection, nickname) {
@@ -93,26 +88,26 @@ var addNickname = function (connection, nickname) {
   }
   if (connection.nickname == undefined) {
     connection.write('Nickname criado\n');
-  } else {    
+  } else {
     broadcast(connection.nickname + ' agora é ' + nickname);
   }
   connection.nickname = nickname;
 }
 
-var exibeDetalhes = function (connection) {    
+var exibeDetalhes = function (connection) {
   var strContatos = '';
-  if (connection.listaDeContatos == undefined) {
-    connection.write('Nenhum contato localizado!\n');    
+  if (connection.listaDeContatos.length === 0) {
+    connection.write('Nenhum contato localizado!\n');
   } else {
     for (var i = 0; i < connection.listaDeContatos.length; i++) {
       strContatos = strContatos + connection.listaDeContatos[i].nickname + ', ';
-    } 
-    connection.write('lista de contatos:' + strContatos + '\n');    
-  }    
+    }
+    connection.write('lista de contatos:' + strContatos + '\n');
+  }
 
   var strGrupos = '';
-  if (connection.grupos == undefined) {
-    connection.write('Nenhum grupo pertencente!\n');    
+  if (connection.grupos.length === 0) {
+    connection.write('Nenhum grupo pertencente!\n');
   } else {
     for (var i = 0; i < connection.grupos.length; i++) {
       strGrupos = strGrupos + connection.grupos[i].nome + ', ';
@@ -121,23 +116,54 @@ var exibeDetalhes = function (connection) {
   }
 }
 
+var exibeHistoricoMsg = function (connection) {
+  var strMensagem = '';
+  if (connection.mensagens.length === 0) {
+    connection.write('Nenhuma mensagem encontrada!\n');
+  } else {
+    for (var i = 0; i < connection.mensagens.length; i++) {
+      strMensagem = strMensagem + connection.mensagens[i] + '\n';
+    }
+    connection.write(strMensagem + '\n');
+  }
+}
+
+var exibeHistoricoMsgGrupo = function (connection) {
+  var strMensagem = '';
+  if (connection.mensagensGrupo.length === 0) {
+    connection.write('Nenhuma mensagem encontrada!\n');
+  } else {
+    for (var i = 0; i < connection.mensagensGrupo.length; i++) {
+      strMensagem = strMensagem + connection.mensagensGrupo[i] + '\n';
+    }
+    connection.write(strMensagem + '\n');
+  }
+}
+
 var exibeComandos = function (connection) {
   connection.write(
     connection.nickname + ' está conectado(a)!!!\n'
-    + '\nComandos:\n' 
-    + '1 - criar nickname (exemplo: 1 fulano) \n' 
-    + '2 - adicionar contato (exemplo: 2 fulano) \n'
-    + '3 - enviar mensagem a contato (exemplo: 3 contato => mensagem ) \n'
-    + '4 - criar grupo (exemplo: 4 nome do grupo ) \n'
-    + '5 - adicionar participante em grupo (exemplo: 5 grupo => participante ) \n'
-    + '6 - enviar mensagem no grupo (exemplo: 6 grupo => mensagem) \n'
+    + '\nComandos:\n'
+    + '1 - criar nickname (exemplo: 1 - fulano) \n'
+    + '2 - adicionar contato (exemplo: 2 - fulano) \n'
+    + '3 - enviar mensagem a contato (exemplo: 3 - contato => mensagem ) \n'
+    + '4 - criar grupo (exemplo: 4 - nome do grupo ) \n'
+    + '5 - adicionar participante em grupo (exemplo: 5 - grupo => participante ) \n'
+    + '6 - enviar mensagem no grupo (exemplo: 6 - grupo => mensagem) \n'
     + '7 - detalhes \n'
+    + '8 - histórico de mensagens \n'
+    + '9 - historico de mensagens em grupos \n'
+    + '0 - sair \n'
   );
 }
 
 net.createServer(function (connection) {
+  connection.listaDeContatos = [];
+  connection.grupos = [];
+  connection.mensagens = [];
+  connection.mensagensGrupo = [];
   connections.push(connection);
-  connection.write('Você está conectado ao servidor\n');  
+  connection.write('Você está conectado ao servidor\n');
   exibeComandos(connection);
 
   connection.on('data', function (message) {
@@ -145,12 +171,12 @@ net.createServer(function (connection) {
 
     if (command.indexOf('1 -') === 0) {
       var nickname = command.replace('1 -', '').trim();
-      addNickname(connection, nickname);      
+      addNickname(connection, nickname);
       exibeComandos(connection);
       return;
     }
 
-    if (command.indexOf('2 -') === 0) {      
+    if (command.indexOf('2 -') === 0) {
       var contato = command.replace('2 -', '').trim();
       adicionarContatoNaLista(connection, contato);
       exibeComandos(connection);
@@ -161,7 +187,7 @@ net.createServer(function (connection) {
       var contatoMensagem = command.replace('3 -', '').trim();
       var contato = contatoMensagem.substring(0, contatoMensagem.indexOf("=>")).trim();
       var mensagem = contatoMensagem.split("=>").pop();
-      enviaMensagemParaContato(contato, connection.nickname + ' > ' + mensagem);
+      enviaMensagemParaContato(connection, contato, connection.nickname + ' > ' + mensagem);
     }
 
     if (command.indexOf('4 -') === 0) {
@@ -175,8 +201,7 @@ net.createServer(function (connection) {
       var grupoParticipante = command.replace('5 -', '').trim();
       var grupo = grupoParticipante.substring(0, grupoParticipante.indexOf("=>")).trim();
       var nicknameParticipante = grupoParticipante.split("=>").pop().trim();
-      addParticipanteEmGrupo(grupo, nicknameParticipante);
-      connection.write('Participante Adicionado!\n');
+      addParticipanteEmGrupo(connection, grupo, nicknameParticipante);
       exibeComandos(connection);
       return;
     }
@@ -185,31 +210,38 @@ net.createServer(function (connection) {
       var grupoMensagem = command.replace('6 -', '').trim();
       var grupo = grupoMensagem.substring(0, grupoMensagem.indexOf("=>")).trim();
       var mensagem = grupoMensagem.split("=>").pop();
-      enviaMensagemGrupo(grupo, connection.nickname + ' > ' + mensagem);      
+      enviaMensagemGrupo(grupo, connection.nickname + ' > ' + mensagem);
       return;
     }
 
-    if (command.indexOf('7 -') === 0) {      
+    if (command.indexOf('7 -') === 0) {
       exibeDetalhes(connection);
       exibeComandos(connection);
       return;
     }
-    
-    if (command.indexOf('0 -') === 0 ){
+
+    if (command.indexOf('8 -') === 0) {
+      exibeHistoricoMsg(connection);
+      exibeComandos(connection);
+    }
+
+    if (command.indexOf('9 -') === 0) {
+      exigeHistoricoMsgGrupo(connection);
+      exibeComandos(connection);
+    }
+
+    if (command.indexOf('0 -') === 0) {
       connection.write('bye bye');
       connection.destroy();
     }
-
-    // broadcast(connection.nickname + ' > ' + message, connection);
   });
 
   connection.on('close', function () {
     broadcast(connection.nickname + ' saiu!', connection);
-    connections.splice(connections.indexOf(connection), 1);
+    // connections.splice(connections.indexOf(connection), 1);
   });
 
   connection.on('error', function (erro) {
   });
-
 
 }).listen(3000);

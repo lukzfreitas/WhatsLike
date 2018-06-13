@@ -1,8 +1,7 @@
 var net = require('net');
 
 var client = net.connect(3000);
-client.on('connect', function () {
-	// client.write('Hello, I am the client!');	
+client.on('connect', function () {	
 });
 client.on('data', function (message) {
 	console.log(message.toString());
