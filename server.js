@@ -29,6 +29,12 @@ var criandoGrupo = function (nomeDoGrupo, connection) {
   }
 }
 
+var nickenameExiste = function (nickname) {
+  return connections.find(function (connection) {
+    return connection.nickname === nickname;
+  });
+}
+
 var addParticipanteEmGrupo = function (connection, grupoNome, nicknameParticipante) {
 
   connectionFound = connection.listaDeContatos.find(function (contato) {
@@ -70,14 +76,15 @@ var enviaMensagemParaContato = function (connection, contato, mensagem) {
 }
 
 var adicionarContatoNaLista = function (connection, contato) {
+  connectionCopy = getConnection(connection);
   var contatoEncontrado = connections.find(function (connectionItem) {
     return connectionItem.nickname === contato;
   });
   if (contatoEncontrado === undefined) {
     connection.write('Nenhum contato encontrado!\n');
     return;
-  }
-  connection.listaDeContatos.push(contatoEncontrado);
+  }  
+  connectionCopy.listaDeContatos.push(contatoEncontrado);
   connection.write('Contato adicionado!\n');
 }
 
@@ -86,21 +93,31 @@ var addNickname = function (connection, nickname) {
     connection.write('Nenhum nickname informado\n');
     return;
   }
+  if (nickname.length > 8) {
+    connection.write('Nickname tamanho maior que 8 caracteres');
+    return;
+  }
+  if (nickenameExiste(nickname) !== undefined) {
+    connection.write('Nickname já existe');
+    return;
+  }
   if (connection.nickname == undefined) {
     connection.write('Nickname criado\n');
   } else {
     broadcast(connection.nickname + ' agora é ' + nickname);
   }
+  connection = getConnection(connection);
   connection.nickname = nickname;
 }
 
 var exibeDetalhes = function (connection) {
   var strContatos = '';
-  if (connection.listaDeContatos.length === 0) {
+  connectionCopy = getConnection(connection);
+  if (connectionCopy.listaDeContatos.length === 0) {
     connection.write('Nenhum contato localizado!\n');
   } else {
-    for (var i = 0; i < connection.listaDeContatos.length; i++) {
-      strContatos = strContatos + connection.listaDeContatos[i].nickname + ', ';
+    for (var i = 0; i < connectionCopy.listaDeContatos.length; i++) {
+      strContatos = strContatos + connectionCopy.listaDeContatos[i].nickname + ', ';
     }
     connection.write('lista de contatos:' + strContatos + '\n');
   }
@@ -140,10 +157,15 @@ var exibeHistoricoMsgGrupo = function (connection) {
   }
 }
 
+var getConnection = function(connection) {  
+  return connections.find(function (connectionItem) {
+    return connection.localAddress === connectionItem.ip;
+  });
+}
+
 var exibeComandos = function (connection) {
-  connection.write(
-    connection.nickname + ' está conectado(a)!!!\n'
-    + '\nComandos:\n'
+  connection.write(        
+    '\nComandos:\n'
     + '1 - criar nickname (exemplo: 1 - fulano) \n'
     + '2 - adicionar contato (exemplo: 2 - fulano) \n'
     + '3 - enviar mensagem a contato (exemplo: 3 - contato => mensagem ) \n'
@@ -158,16 +180,33 @@ var exibeComandos = function (connection) {
 }
 
 net.createServer(function (connection) {
-  connection.listaDeContatos = [];
-  connection.grupos = [];
-  connection.mensagens = [];
-  connection.mensagensGrupo = [];
-  connections.push(connection);
-  connection.write('Você está conectado ao servidor\n');
-  exibeComandos(connection);
+  
+  connectionExists = getConnection(connection);
+  if (connectionExists === undefined) {    
+    connection.listaDeContatos = [];
+    connection.grupos = [];
+    connection.mensagens = [];
+    connection.mensagensGrupo = [];  
+    connection.ip = connection.localAddress;
+    connections.push(connection);
+    connection.write('Bem vindo!!! Você está conectado ao servidor\n');          
+  } else {        
+    connection.nickname = connectionExists.nickname;
+    connection.listaDeContatos = connectionExists.listaDeContatos;
+    connection.grupos = connectionExists.grupos;
+    connection.mensagens = connectionExists.mensagens;
+    connection.mensagensGrupo = connectionExists.mensagensGrupo;  
+    connection.ip = connection.localAddress;    
+    if (connection.nickname !== undefined) {
+      connection.write(connection.nickname + ' você está novamente conectado ao servidor\n');          
+    } else {
+      connection.write('Você está novamente conectado ao servidor\n');          
+    }    
+  }
+  exibeComandos(connection); 
 
   connection.on('data', function (message) {
-    var command = message.toString();
+    var command = message.toString();    
 
     if (command.indexOf('1 -') === 0) {
       var nickname = command.replace('1 -', '').trim();
