@@ -10,9 +10,9 @@ var broadcast = function (message, origin) {
   });
 };
 
-var grupoBroadcast = function (participantes, mensagem, origem) {
+var grupoBroadcast = function (participantes, mensagem, origem) {  
   participantes.forEach(function (connection) {
-    if (connection === origem) return;
+    if (connection === origem) return;    
     connection.write(mensagem);
     connection.mensagensGrupo.push(mensagem);
   });
@@ -70,25 +70,25 @@ var enviaMensagemParaContato = function (connection, contato, mensagem) {
   if (connectionFound === undefined) {
     connection.write('Contato não encontrado na lista de contatos');
     return;
-  }
-  connectionFound.write(mensagem);
+  }    
   connectionFound.mensagens.push(mensagem);
+  connection.mensagens.push(mensagem);
 }
 
-var adicionarContatoNaLista = function (connection, contato) {
-  connectionCopy = getConnection(connection);
+var adicionarContatoNaLista = function (connection, contato) {  
   var contatoEncontrado = connections.find(function (connectionItem) {
     return connectionItem.nickname === contato;
   });
   if (contatoEncontrado === undefined) {
     connection.write('Nenhum contato encontrado!\n');
     return;
-  }  
-  connectionCopy.listaDeContatos.push(contatoEncontrado);
+  }
+  connection.listaDeContatos.push(contatoEncontrado);
   connection.write('Contato adicionado!\n');
 }
 
 var addNickname = function (connection, nickname) {
+  connection = getConnection(connection, connection.ip);  
   if (nickname === '') {
     connection.write('Nenhum nickname informado\n');
     return;
@@ -101,23 +101,23 @@ var addNickname = function (connection, nickname) {
     connection.write('Nickname já existe');
     return;
   }
+  
   if (connection.nickname == undefined) {
     connection.write('Nickname criado\n');
   } else {
     broadcast(connection.nickname + ' agora é ' + nickname);
-  }
-  connection = getConnection(connection);
+  }    
   connection.nickname = nickname;
 }
 
 var exibeDetalhes = function (connection) {
   var strContatos = '';
-  connectionCopy = getConnection(connection);
-  if (connectionCopy.listaDeContatos.length === 0) {
+  // connectionCopy = getConnection(connection, connection.ip);
+  if (connection.listaDeContatos.length === 0) {
     connection.write('Nenhum contato localizado!\n');
   } else {
-    for (var i = 0; i < connectionCopy.listaDeContatos.length; i++) {
-      strContatos = strContatos + connectionCopy.listaDeContatos[i].nickname + ', ';
+    for (var i = 0; i < connection.listaDeContatos.length; i++) {
+      strContatos = strContatos + connection.listaDeContatos[i].nickname + ', ';
     }
     connection.write('lista de contatos:' + strContatos + '\n');
   }
@@ -139,9 +139,18 @@ var exibeHistoricoMsg = function (connection) {
     connection.write('Nenhuma mensagem encontrada!\n');
   } else {
     for (var i = 0; i < connection.mensagens.length; i++) {
+      nickname = connection.mensagens[i].substring(0, connection.mensagens[i].indexOf(">")).trim();
+      connectionFound = connections.find(function (connectionItem) {
+        return nickname === connectionItem.nickname;
+      });
+      if (connectionFound !== undefined) {
+        connectionFound.write(connection.nickname + ' leu sua mensagem => ' + connection.mensagens[i]);
+        connectionFound.mensagens = [];
+      }      
       strMensagem = strMensagem + connection.mensagens[i] + '\n';
     }
     connection.write(strMensagem + '\n');
+    connection.mensagens = [];
   }
 }
 
@@ -150,21 +159,30 @@ var exibeHistoricoMsgGrupo = function (connection) {
   if (connection.mensagensGrupo.length === 0) {
     connection.write('Nenhuma mensagem encontrada!\n');
   } else {
-    for (var i = 0; i < connection.mensagensGrupo.length; i++) {
+    for (var i = 0; i < connection.mensagensGrupo.length; i++) {      
+      nickname = connection.mensagensGrupo[i].substring(0, connection.mensagensGrupo[i].indexOf(">")).trim();
+      connectionFound = connections.find(function (connectionItem) {
+        return nickname === connectionItem.nickname;
+      });
+      if (connectionFound !== undefined) {
+        connectionFound.write(connection.nickname + ' leu sua mensagem => ' + connection.mensagensGrupo[i]);
+        connectionFound.mensagensGrupo = [];
+      }      
       strMensagem = strMensagem + connection.mensagensGrupo[i] + '\n';
     }
     connection.write(strMensagem + '\n');
+    connection.mensagensGrupo = [];
   }
 }
 
-var getConnection = function(connection) {  
+var getConnection = function (connection, ip) {
   return connections.find(function (connectionItem) {
-    return connection.localAddress === connectionItem.ip;
+    return ip === connectionItem.ip;
   });
 }
 
 var exibeComandos = function (connection) {
-  connection.write(        
+  connection.write(
     '\nComandos:\n'
     + '1 - criar nickname (exemplo: 1 - fulano) \n'
     + '2 - adicionar contato (exemplo: 2 - fulano) \n'
@@ -180,33 +198,38 @@ var exibeComandos = function (connection) {
 }
 
 net.createServer(function (connection) {
-  
-  connectionExists = getConnection(connection);
-  if (connectionExists === undefined) {    
-    connection.listaDeContatos = [];
-    connection.grupos = [];
-    connection.mensagens = [];
-    connection.mensagensGrupo = [];  
-    connection.ip = connection.localAddress;
-    connections.push(connection);
-    connection.write('Bem vindo!!! Você está conectado ao servidor\n');          
-  } else {        
-    connection.nickname = connectionExists.nickname;
-    connection.listaDeContatos = connectionExists.listaDeContatos;
-    connection.grupos = connectionExists.grupos;
-    connection.mensagens = connectionExists.mensagens;
-    connection.mensagensGrupo = connectionExists.mensagensGrupo;  
-    connection.ip = connection.localAddress;    
-    if (connection.nickname !== undefined) {
-      connection.write(connection.nickname + ' você está novamente conectado ao servidor\n');          
-    } else {
-      connection.write('Você está novamente conectado ao servidor\n');          
-    }    
-  }
-  exibeComandos(connection); 
 
   connection.on('data', function (message) {
+
     var command = message.toString();    
+    if (command.indexOf('ip -') === 0) {
+      var ip = command.replace('ip -', '').trim();
+      console.log('Ip conectado ' + ip);
+      connectionExists = getConnection(connection, ip);
+      if (connectionExists === undefined) {
+        connection.listaDeContatos = [];
+        connection.grupos = [];
+        connection.mensagens = [];
+        connection.mensagensGrupo = [];
+        connection.ip = ip;
+        connections.push(connection);
+        connection.write('Bem vindo!!! Você está conectado ao servidor\n');
+      } else {
+        connection.nickname = connectionExists.nickname;
+        connection.listaDeContatos = connectionExists.listaDeContatos;
+        connection.grupos = connectionExists.grupos;
+        connection.mensagens = connectionExists.mensagens;
+        connection.mensagensGrupo = connectionExists.mensagensGrupo;
+        if (connection.nickname !== undefined) {
+          connection.write(connection.nickname + ' você está novamente conectado ao servidor\n');
+        } else {
+          connection.write('Você está novamente conectado ao servidor\n');
+        }
+      }
+    }
+
+
+    exibeComandos(connection);
 
     if (command.indexOf('1 -') === 0) {
       var nickname = command.replace('1 -', '').trim();
@@ -262,22 +285,25 @@ net.createServer(function (connection) {
     if (command.indexOf('8 -') === 0) {
       exibeHistoricoMsg(connection);
       exibeComandos(connection);
+      return;
     }
 
     if (command.indexOf('9 -') === 0) {
-      exigeHistoricoMsgGrupo(connection);
+      exibeHistoricoMsgGrupo(connection);
       exibeComandos(connection);
+      return;
     }
 
     if (command.indexOf('0 -') === 0) {
       connection.write('bye bye');
       connection.destroy();
+      return;
     }
+    // connection.ip = command;
   });
 
   connection.on('close', function () {
     broadcast(connection.nickname + ' saiu!', connection);
-    // connections.splice(connections.indexOf(connection), 1);
   });
 
   connection.on('error', function (erro) {
